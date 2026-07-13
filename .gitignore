@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+dist/
+dist-electron/
+out/
+build/
+.gradle/
+.kotlin/
+*.log
+.DS_Store
+.idea/
+worker/.kotlin/
+apps/desktop/release/
+!apps/desktop/build/
+apps/desktop/build/*
+!apps/desktop/build/icon.svg
+!apps/desktop/build/icon.png

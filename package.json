@@ -1,0 +1,16 @@
+{
+  "name": "eridion",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --filter @eridion/desktop dev",
+    "dev:browser": "pnpm --filter @eridion/desktop dev:browser",
+    "build": "pnpm --filter @eridion/desktop build",
+    "test": "pnpm --filter @eridion/desktop test",
+    "typecheck": "pnpm --filter @eridion/desktop typecheck",
+    "worker:build": "./gradlew :worker:shadowJar :worker:runtimeImage",
+    "worker:test": "./gradlew :worker:test",
+    "package": "pnpm worker:build && pnpm --filter @eridion/desktop package"
+  }
+}

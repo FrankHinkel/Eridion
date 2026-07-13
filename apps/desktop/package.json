@@ -1,0 +1,78 @@
+{
+  "name": "@eridion/desktop",
+  "version": "0.1.0",
+  "description": "Self-contained desktop editor for database ER diagrams and editable PDF documents",
+  "author": "Eridion Contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:browser": "vite --config vite.browser.config.ts",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "package": "pnpm build && electron-builder --publish never"
+  },
+  "dependencies": {
+    "@vue-flow/background": "^1.3.2",
+    "@vue-flow/core": "^1.48.2",
+    "lucide-vue-next": "^0.525.0",
+    "vue": "^3.5.17"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "electron": "^37.2.1",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.4",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^2.2.12"
+  },
+  "build": {
+    "appId": "com.eridion.desktop",
+    "productName": "Eridion",
+    "asar": true,
+    "beforeBuild": "./build/electron-before-build.cjs",
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../worker/build/libs/eridion-worker-all.jar",
+        "to": "worker/eridion-worker.jar"
+      },
+      {
+        "from": "../../worker/build/runtime",
+        "to": "runtime"
+      }
+    ],
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "Eridion PDF Diagram",
+        "description": "Editable Eridion entity relationship diagram",
+        "role": "Editor"
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.png",
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": ["nsis"]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    }
+  }
+}
