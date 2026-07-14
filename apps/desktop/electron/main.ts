@@ -104,7 +104,7 @@ function installMenu(): void {
     { label: 'Ansicht', submenu: [
       { label: 'Blatt herauszoomen', accelerator: 'CmdOrCtrl+-', click: () => sendCommand('page-zoom-out') },
       { label: 'Blatt hineinzoomen', accelerator: 'CmdOrCtrl+=', click: () => sendCommand('page-zoom-in') },
-      { label: 'Ganze Seite / vorige Ansicht', accelerator: 'Esc', click: () => sendCommand('page-fit') },
+      { label: 'Druckbereich / vorige Ansicht', accelerator: 'Esc', click: () => sendCommand('page-fit') },
       { type: 'separator' },
       ...(isDev ? [{ role: 'reload' as const }, { role: 'toggleDevTools' as const }, { type: 'separator' as const }] : []),
       { role: 'togglefullscreen' }

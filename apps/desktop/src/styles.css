@@ -21,8 +21,13 @@ button:disabled { cursor: wait; opacity: .55; }
 .document-name > span.dirty::after { content: " •"; color: #38bdf8; }
 .document-name small { color: #94a3b8; font-size: 10px; margin-top: 2px; }
 
-.workspace { display: grid; grid-template-columns: 245px minmax(0, 1fr); min-height: 0; }
-.palette { width: 245px; padding: 10px; background: #f8fafc; border-right: 1px solid #cbd5e1; overflow-y: auto; z-index: 10; }
+.workspace { display: grid; grid-template-columns: var(--palette-width, 245px) 7px minmax(0, 1fr); min-height: 0; }
+.workspace.resizing-palette { cursor: col-resize; user-select: none; }
+.palette { width: 100%; min-width: 0; padding: 10px; background: #f8fafc; overflow-y: auto; z-index: 10; }
+.palette-splitter { position: relative; z-index: 12; cursor: col-resize; background: #e2e8f0; border-right: 1px solid #cbd5e1; border-left: 1px solid #cbd5e1; outline: none; touch-action: none; }
+.palette-splitter::after { content: ""; width: 2px; height: 42px; position: absolute; left: 50%; top: 50%; border-radius: 2px; background: #94a3b8; opacity: .55; transform: translate(-50%, -50%); transition: height .12s ease, background .12s ease, opacity .12s ease; }
+.palette-splitter:hover::after, .palette-splitter:focus-visible::after, .resizing-palette .palette-splitter::after { height: 64px; background: #2563eb; opacity: 1; }
+.palette-splitter:focus-visible { box-shadow: 0 0 0 2px #60a5fa inset; }
 .palette-accordion { margin-bottom: 7px; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 7px; background: white; box-shadow: 0 1px 2px #0f172a0d; }
 .accordion-header { width: 100%; min-height: 39px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; border: 0; background: #f8fafc; color: #475569; font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
 .accordion-header > span { display: flex; align-items: center; gap: 7px; }

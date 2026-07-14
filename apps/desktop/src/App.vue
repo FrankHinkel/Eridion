@@ -22,6 +22,8 @@ import { buildPdfTooltips, buildPrintHtml } from './print'
 import { RELATIONSHIP_ROUTE_GRID } from './relationship-path'
 import { isEditableKeyboardTarget } from './keyboard-target'
 import { resolveFlowSelection } from './selection'
+import { fitPrintableArea } from './page-view'
+import { clampSidebarWidth, DEFAULT_SIDEBAR_WIDTH, parseStoredSidebarWidth } from './sidebar-resize'
 
 const state = useDocumentState()
 const currentDocument = state.document as unknown as { value: EridionDocument }
@@ -53,6 +55,11 @@ const pageViewPanY = ref(0)
 const previousPageView = ref<{ zoom: number; panX: number; panY: number }>()
 const panStart = ref<{ clientX: number; clientY: number; panX: number; panY: number }>()
 const panning = ref(false)
+const workspace = ref<HTMLElement>()
+const paletteWidth = ref(DEFAULT_SIDEBAR_WIDTH)
+const resizingPalette = ref(false)
+const paletteResizeStart = ref<{ clientX: number; width: number }>()
+const SIDEBAR_WIDTH_STORAGE_KEY = 'eridion.sidebar.width'
 
 const activePage = computed<DiagramPage>(() => currentDocument.value.pages.find((page) => page.id === activePageId.value) ?? currentDocument.value.pages[0])
 const activeNodes = computed(() => nodesForPage(currentDocument.value, activePageId.value))
@@ -123,6 +130,47 @@ function togglePaletteSection(section: PaletteSection) {
   manuallyOpenedPaletteSection.value = section
 }
 
+function restorePaletteWidth() {
+  try { paletteWidth.value = parseStoredSidebarWidth(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)) } catch { /* Browser storage may be disabled. */ }
+}
+
+function storePaletteWidth() {
+  try { window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(paletteWidth.value)) } catch { /* Browser storage may be disabled. */ }
+}
+
+function startPaletteResize(event: PointerEvent) {
+  if (event.button !== 0) return
+  resizingPalette.value = true
+  paletteResizeStart.value = { clientX: event.clientX, width: paletteWidth.value }
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+
+function resizePalette(event: PointerEvent) {
+  const start = paletteResizeStart.value
+  if (!start) return
+  paletteWidth.value = clampSidebarWidth(start.width + event.clientX - start.clientX, workspace.value?.clientWidth)
+}
+
+function finishPaletteResize(event: PointerEvent) {
+  const target = event.currentTarget as HTMLElement
+  if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
+  if (!paletteResizeStart.value) return
+  paletteResizeStart.value = undefined
+  resizingPalette.value = false
+  storePaletteWidth()
+}
+
+function resizePaletteWithKeyboard(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home') return
+  event.preventDefault()
+  const nextWidth = event.key === 'Home'
+    ? DEFAULT_SIDEBAR_WIDTH
+    : paletteWidth.value + (event.key === 'ArrowLeft' ? -10 : 10)
+  paletteWidth.value = clampSidebarWidth(nextWidth, workspace.value?.clientWidth)
+  storePaletteWidth()
+}
+
 function openPaletteAutomatically(section: PaletteSection) {
   if (!manuallyOpenedPaletteSection.value) paletteSection.value = section
 }
@@ -147,12 +195,37 @@ function updateSheetBaseSize() {
   applyBaseViewport()
 }
 
+function printableAreaView() {
+  const stage = pageStage.value
+  if (!stage) return undefined
+  const dimensions = currentPageDimensions.value
+  return fitPrintableArea({
+    stageWidth: stage.clientWidth,
+    stageHeight: stage.clientHeight,
+    sheetWidth: sheetBaseWidth.value,
+    sheetHeight: sheetBaseHeight.value,
+    paperWidthMm: dimensions.widthMm,
+    paperHeightMm: dimensions.heightMm,
+    margins: pageMargins(currentDocument.value.page),
+    padding: 6
+  })
+}
+
 function resetPageView() {
   pageViewZoom.value = 1
   pageViewPanX.value = 0
   pageViewPanY.value = 0
   previousPageView.value = undefined
   updateSheetBaseSize()
+  nextTick(() => requestAnimationFrame(() => {
+    const fit = printableAreaView()
+    if (!fit) return
+    previousPageView.value = { zoom: 1, panX: 0, panY: 0 }
+    pageViewZoom.value = fit.zoom
+    pageViewPanX.value = fit.panX
+    pageViewPanY.value = fit.panY
+    applyBaseViewport()
+  }))
 }
 
 function setPageZoom(nextZoom: number, clientX?: number, clientY?: number) {
@@ -212,8 +285,12 @@ function onStagePointerUp(event: PointerEvent) {
 }
 
 function togglePageZoom() {
-  const isWholePage = Math.abs(pageViewZoom.value - 1) < 0.001 && Math.abs(pageViewPanX.value) < 1 && Math.abs(pageViewPanY.value) < 1
-  if (isWholePage && previousPageView.value) {
+  const fit = printableAreaView()
+  if (!fit) return
+  const isPrintableAreaFit = Math.abs(pageViewZoom.value - fit.zoom) < 0.001
+    && Math.abs(pageViewPanX.value - fit.panX) < 0.5
+    && Math.abs(pageViewPanY.value - fit.panY) < 0.5
+  if (isPrintableAreaFit && previousPageView.value) {
     const restore = previousPageView.value
     previousPageView.value = undefined
     pageViewZoom.value = restore.zoom
@@ -224,11 +301,11 @@ function togglePageZoom() {
     return
   }
   previousPageView.value = { zoom: pageViewZoom.value, panX: pageViewPanX.value, panY: pageViewPanY.value }
-  pageViewZoom.value = 1
-  pageViewPanX.value = 0
-  pageViewPanY.value = 0
+  pageViewZoom.value = fit.zoom
+  pageViewPanX.value = fit.panX
+  pageViewPanY.value = fit.panY
   applyBaseViewport()
-  status.value = 'Ganze Seite'
+  status.value = `Druckbereich eingepasst · ${Math.round(fit.zoom * 100)} %`
 }
 
 function selectPage(pageId: string) {
@@ -804,6 +881,7 @@ watch(
 let removeMenuListener: (() => void) | undefined
 let pageResizeObserver: ResizeObserver | undefined
 onMounted(() => {
+  restorePaletteWidth()
   window.addEventListener('keydown', keyHandler)
   window.addEventListener('keyup', keyUpHandler)
   window.addEventListener('blur', resetModifier)
@@ -827,7 +905,7 @@ onMounted(() => {
   })
   pageResizeObserver = new ResizeObserver(updateSheetBaseSize)
   if (pageStage.value) pageResizeObserver.observe(pageStage.value)
-  updateSheetBaseSize()
+  resetPageView()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', keyHandler)
@@ -845,7 +923,7 @@ onBeforeUnmount(() => {
       <div class="document-name"><span :class="{ dirty: state.dirty.value }">{{ state.displayName.value }}</span><small>{{ pageDescription }} · {{ state.document.value.pages.length }} {{ state.document.value.pages.length === 1 ? 'Seite' : 'Seiten' }}</small></div>
     </header>
 
-    <section class="workspace">
+    <section ref="workspace" class="workspace" :class="{ 'resizing-palette': resizingPalette }" :style="{ '--palette-width': `${paletteWidth}px` }">
       <aside class="palette">
         <section class="palette-accordion properties-accordion">
           <button class="accordion-header" :class="{ open: paletteSection === 'document', locked: manuallyOpenedPaletteSection === 'document' }" @click="togglePaletteSection('document')">
@@ -896,6 +974,23 @@ onBeforeUnmount(() => {
           <PropertiesPanel v-if="paletteSection === 'properties'" :active-page-id="activePageId" mode="selection" @delete="deleteSelected" @changed="propertiesChanged" />
         </section>
       </aside>
+
+      <div
+        class="palette-splitter"
+        role="separator"
+        aria-label="Breite der Seitenleiste ändern"
+        aria-orientation="vertical"
+        :aria-valuemin="180"
+        :aria-valuemax="520"
+        :aria-valuenow="paletteWidth"
+        tabindex="0"
+        title="Ziehen, um die Seitenleiste zu ändern · Pos1 setzt die Standardbreite"
+        @pointerdown="startPaletteResize"
+        @pointermove="resizePalette"
+        @pointerup="finishPaletteResize"
+        @pointercancel="finishPaletteResize"
+        @keydown="resizePaletteWithKeyboard"
+      />
 
       <div class="page-workarea">
         <nav class="page-tabs" aria-label="Diagrammseiten">
