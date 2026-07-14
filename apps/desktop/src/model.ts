@@ -99,6 +99,41 @@ export type AnchorSide = 'top' | 'right' | 'bottom' | 'left'
 export interface RelationshipAnchor {
   side: AnchorSide
   position: number
+  columnId?: string
+  columnOffset?: number
+}
+
+export interface RelationshipColumnBounds {
+  id: string
+  top: number
+  bottom: number
+}
+
+const TABLE_HEADER_HEIGHT = 32
+const TABLE_ALIAS_HEIGHT = 22
+const TABLE_COLUMN_HEIGHT = 18
+
+function clampAnchorPosition(value: number): number {
+  return Math.round(Math.max(-1, Math.min(1, value)) * 1000) / 1000
+}
+
+export function tableColumnAnchorPosition(data: TableNodeData, columnId: string): number | undefined {
+  const columns = sortTableColumns(data.columns)
+  const index = columns.findIndex((column) => column.id === columnId)
+  if (index < 0) return undefined
+  const height = TABLE_HEADER_HEIGHT + (data.alias ? TABLE_ALIAS_HEIGHT : 0) + Math.max(1, columns.length) * TABLE_COLUMN_HEIGHT
+  const center = TABLE_HEADER_HEIGHT + (data.alias ? TABLE_ALIAS_HEIGHT : 0) + (index + 0.5) * TABLE_COLUMN_HEIGHT
+  return clampAnchorPosition(center / height * 2 - 1)
+}
+
+export function resolvedRelationshipAnchor(anchor: RelationshipAnchor | undefined, data: TableNodeData): RelationshipAnchor | undefined {
+  if (!anchor?.columnId || (anchor.side !== 'left' && anchor.side !== 'right')) return anchor
+  const columnPosition = tableColumnAnchorPosition(data, anchor.columnId)
+  if (columnPosition === undefined) return { side: anchor.side, position: anchor.position }
+  return {
+    ...anchor,
+    position: clampAnchorPosition(columnPosition + (anchor.columnOffset ?? 0))
+  }
 }
 
 export interface RectangleBounds {
@@ -163,6 +198,40 @@ export function alignedRelationshipAnchor(
   return { anchor: nearestRelationshipAnchor(rect, clientX, clientY, false).anchor }
 }
 
+export function columnAwareRelationshipAnchor(
+  rect: RectangleBounds,
+  clientX: number,
+  clientY: number,
+  columns: readonly RelationshipColumnBounds[],
+  otherEndpoint?: { x: number; y: number },
+  precise = false
+): { anchor: RelationshipAnchor; aligned?: 'horizontal' | 'vertical' } {
+  const exact = nearestRelationshipAnchor(rect, clientX, clientY, true).anchor
+  if ((exact.side === 'left' || exact.side === 'right') && columns.length) {
+    const nearestColumn = columns.reduce((best, column) => {
+      const distance = Math.abs(clientY - (column.top + column.bottom) / 2)
+      return distance < best.distance ? { column, distance } : best
+    }, { column: columns[0], distance: Number.POSITIVE_INFINITY })
+    const insideColumns = columns.some((column) => clientY >= column.top && clientY <= column.bottom)
+    if (precise || insideColumns) {
+      const centerY = (nearestColumn.column.top + nearestColumn.column.bottom) / 2
+      const centerPosition = (centerY - rect.top) / Math.max(1, rect.height) * 2 - 1
+      const exactPosition = (clientY - rect.top) / Math.max(1, rect.height) * 2 - 1
+      const columnOffset = precise ? clampAnchorPosition(exactPosition - centerPosition) : 0
+      return {
+        anchor: {
+          side: exact.side,
+          position: clampAnchorPosition(centerPosition + columnOffset),
+          columnId: nearestColumn.column.id,
+          ...(columnOffset ? { columnOffset } : {})
+        }
+      }
+    }
+  }
+  if (!precise && !otherEndpoint) return { anchor: nearestRelationshipAnchor(rect, clientX, clientY, false).anchor }
+  return alignedRelationshipAnchor(rect, clientX, clientY, otherEndpoint, precise)
+}
+
 export function parseSnapAnchor(handle: string | null | undefined, fallback: AnchorSide): RelationshipAnchor {
   const match = handle?.match(/^snap-(?:source|target)-(top|right|bottom|left)-(-?\d+(?:\.\d+)?)$/)
   return {
@@ -188,6 +257,7 @@ export interface RelationshipData {
   routeOffsetX?: number
   routeOffsetY?: number
   routePoints?: Array<{ x: number; y: number }>
+  routeSectionOffsets?: Array<{ x: number; y: number }>
 }
 
 export type DiagramEdge = Omit<Edge<RelationshipData>, 'data'> & { data: RelationshipData }
@@ -825,8 +895,14 @@ function columnAnchor(table: SchemaTable, columnName: string, side: AnchorSide):
   if (side === 'top' || side === 'bottom') return { side, position: 0 }
   const columns = sortTableColumns(table.columns)
   const index = columns.findIndex((column) => column.name === columnName)
-  const position = index < 0 || columns.length <= 1 ? 0 : index / (columns.length - 1) * 2 - 1
-  return { side, position: Math.round(position * 1000) / 1000 }
+  if (index < 0) return { side, position: 0 }
+  const height = TABLE_HEADER_HEIGHT + Math.max(1, columns.length) * TABLE_COLUMN_HEIGHT
+  const center = TABLE_HEADER_HEIGHT + (index + 0.5) * TABLE_COLUMN_HEIGHT
+  return {
+    side,
+    position: clampAnchorPosition(center / height * 2 - 1),
+    columnId: `${table.schema ?? ''}.${table.name}.${columns[index].name}`
+  }
 }
 
 function schemaTable(snapshot: SchemaSnapshot, schema: string | undefined, name: string): SchemaTable | undefined {

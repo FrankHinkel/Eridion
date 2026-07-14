@@ -1,5 +1,5 @@
 import { Position } from '@vue-flow/core'
-import { TABLE_BASE_RENDER_SCALE, markInfoBlockLastRow, nodeSize, nodesForPage, pageDimensions, pageMargins, shortTypeName, sortTableColumns, type AnchorSide, type DiagramEdge, type DiagramNode, type DiagramPage, type EridionDocument, type InfoBlockNodeData, type RelationshipAnchor, type TableNodeData, type TextNodeData } from './model'
+import { TABLE_BASE_RENDER_SCALE, markInfoBlockLastRow, nodeSize, nodesForPage, pageDimensions, pageMargins, resolvedRelationshipAnchor, shortTypeName, sortTableColumns, type AnchorSide, type DiagramEdge, type DiagramNode, type DiagramPage, type EridionDocument, type InfoBlockNodeData, type RelationshipAnchor, type TableNodeData, type TextNodeData } from './model'
 import {
   cardinalityGeometry, RELATIONSHIP_DASH_PATTERN,
   RELATIONSHIP_STROKE_WIDTH
@@ -64,8 +64,9 @@ const anchorPositions: Record<AnchorSide, Position> = {
 
 function anchorPoint(node: DiagramNode, anchor: RelationshipAnchor | undefined, fallback: AnchorSide, pageTableScale: number) {
   const size = nodeSize(node, pageTableScale)
-  const side = anchor?.side ?? fallback
-  const position = Math.max(-1, Math.min(1, anchor?.position ?? 0))
+  const resolved = node.data.kind === 'table' ? resolvedRelationshipAnchor(anchor, node.data) : anchor
+  const side = resolved?.side ?? fallback
+  const position = Math.max(-1, Math.min(1, resolved?.position ?? 0))
   const centerX = node.position.x + size.width / 2
   const centerY = node.position.y + size.height / 2
   if (side === 'top') return { x: centerX + position * size.width / 2, y: node.position.y, side }

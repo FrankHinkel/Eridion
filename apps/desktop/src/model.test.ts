@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { Position } from '@vue-flow/core'
 import { buildPdfTooltips, buildPrintHtml } from './print'
 import { cardinalityGeometry, RELATIONSHIP_STROKE_WIDTH } from './relationship-geometry'
-import { relationshipPath, snapRouteCoordinate } from './relationship-path'
+import { helperPassThroughAxis, relationshipPath, relationshipPathSections, snapRouteCoordinate } from './relationship-path'
 import {
-  addSchemaTableToPage, alignedRelationshipAnchor, alignNodeToNearbyObjects, captureInfoBlockAnchor, createPage, deletePage, duplicatePage, importSnapshot, infoBlockSize, newDocument,
+  addSchemaTableToPage, alignedRelationshipAnchor, alignNodeToNearbyObjects, captureInfoBlockAnchor, columnAwareRelationshipAnchor, createPage, deletePage, duplicatePage, importSnapshot, infoBlockSize, newDocument,
   nearestNeighborSides, nearestRelationshipAnchor, nodeSize, nodesForPage, pageDimensions, pageMargins, pageRangeIncludes, pageViewportScale, parseDocument, parseSnapAnchor, positionInfoBlockFromAnchor, serializeDocument, shortTypeName,
-  movePageToTarget, reorderPages, snapTablePositionToPageGrid, sortTableColumns, TABLE_BASE_RENDER_SCALE, tableSize,
+  movePageToTarget, reorderPages, resolvedRelationshipAnchor, snapTablePositionToPageGrid, sortTableColumns, TABLE_BASE_RENDER_SCALE, tableSize,
   storedNodeId, type DiagramNode, type SchemaSnapshot
 } from './model'
 
@@ -277,6 +278,32 @@ describe('Eridion document model', () => {
     })
   })
 
+  it('snaps side anchors to column centers and keeps precise offsets relative to the nearest column', () => {
+    const rect = { left: 100, top: 50, width: 200, height: 400 }
+    const columns = [{ id: 'customer-id', top: 200, bottom: 218 }]
+
+    expect(columnAwareRelationshipAnchor(rect, 300, 205, columns).anchor).toEqual({
+      side: 'right', position: -0.205, columnId: 'customer-id'
+    })
+    expect(columnAwareRelationshipAnchor(rect, 300, 206, columns, undefined, true).anchor).toEqual({
+      side: 'right', position: -0.22, columnId: 'customer-id', columnOffset: -0.015
+    })
+    expect(columnAwareRelationshipAnchor(rect, 300, 103, columns).anchor).toEqual({ side: 'right', position: -0.75 })
+    expect(columnAwareRelationshipAnchor(rect, 300, 103, columns, undefined, true).anchor).toEqual({
+      side: 'right', position: -0.735, columnId: 'customer-id', columnOffset: -0.53
+    })
+  })
+
+  it('resolves a remembered column after the table layout changes', () => {
+    const node = tableNode(newDocument().pages[0].id)
+    if (node.data.kind !== 'table') throw new Error('Testknoten ist keine Tabelle')
+    node.data.columns.push({ id: 'name', name: 'NAME', typeName: 'TEXT', nullable: true, primaryKey: false, foreignKey: false })
+
+    expect(resolvedRelationshipAnchor({ side: 'left', position: 0, columnId: 'name', columnOffset: -0.05 }, node.data)).toEqual({
+      side: 'left', position: 0.75, columnId: 'name', columnOffset: -0.05
+    })
+  })
+
   it('aligns object edges and centers to nearby objects and returns temporary guides', () => {
     const document = newDocument()
     const source = tableNode(document.pages[0].id)
@@ -311,16 +338,86 @@ describe('Eridion document model', () => {
     expect(snapRouteCoordinate(24, true)).toBe(24)
   })
 
-  it('renders persistent route helper points in their explicit order', () => {
-    const path = relationshipPath({
-      sourceX: 10, sourceY: 20, targetX: 210, targetY: 120,
+  it('moves the middle segment of U-shaped step connectors', () => {
+    const base = {
+      sourceX: 100, sourceY: 100, sourcePosition: Position.Right,
+      targetX: 100, targetY: 300, targetPosition: Position.Right
+    }
+    const data = { sourceCardinality: '0..n' as const, targetCardinality: '1' as const, imported: false }
+
+    const automatic = relationshipPath({ ...base, data: { ...data, routeType: 'smoothstep' } })
+    const moved = relationshipPath({ ...base, data: { ...data, routeType: 'smoothstep', routeOffsetX: 35 } })
+    const angular = relationshipPath({ ...base, data: { ...data, routeType: 'step', routeOffsetX: 35 } })
+
+    expect(automatic.slice(1, 3)).toEqual([124, 200])
+    expect(moved.slice(1, 3)).toEqual([159, 200])
+    expect(moved[0]).toContain('159')
+    expect(moved[0]).toContain('Q')
+    expect(angular[0]).not.toContain('Q')
+  })
+
+  it('keeps Smart-Step routing on both sides of persistent helper points', () => {
+    const base = {
+      sourceX: 10, sourceY: 20, sourcePosition: Position.Right,
+      targetX: 210, targetY: 120, targetPosition: Position.Left
+    }
+    const data = {
+      sourceCardinality: '0..n' as const, targetCardinality: '1' as const, imported: false,
+      routePoints: [{ x: 100, y: 80 }]
+    }
+    const smooth = relationshipPath({
+      ...base,
+      data: { ...data, routeType: 'smoothstep' }
+    })
+    const angular = relationshipPath({
+      ...base,
       data: {
-        sourceCardinality: '0..n', targetCardinality: '1', imported: false,
-        routeType: 'smoothstep', routePoints: [{ x: 80, y: 20 }, { x: 80, y: 120 }]
+        ...data, routeType: 'step'
       }
     })
-    expect(path[0]).toBe('M10 20 L80 20 L80 120 L210 120')
-    expect(path.slice(1, 3)).toEqual([80, 20])
+
+    expect(smooth[0].match(/M/g)).toHaveLength(2)
+    expect(smooth[0].match(/Q/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(smooth[0]).toContain('100 80')
+    expect(smooth.slice(1, 3)).toEqual([100, 80])
+    expect(angular[0].match(/M/g)).toHaveLength(2)
+  })
+
+  it('passes straight through helper points instead of turning at them', () => {
+    const path = relationshipPath({
+      sourceX: 0, sourceY: 100, sourcePosition: Position.Right,
+      targetX: 100, targetY: 0, targetPosition: Position.Bottom,
+      data: {
+        sourceCardinality: '0..n', targetCardinality: '1', imported: false,
+        routeType: 'smoothstep', routePoints: [{ x: 100, y: 100 }]
+      }
+    })[0]
+
+    expect(path).toMatch(/L76 100L100 100 M100 100L 116,100Q 124,100/)
+    expect(helperPassThroughAxis({ x: 0, y: 100 }, { x: 100, y: 0 })).toBe('horizontal')
+    expect(helperPassThroughAxis({ x: 0, y: 0 }, { x: 20, y: 100 })).toBe('vertical')
+  })
+
+  it('moves the routed sections on either side of a helper point independently', () => {
+    const base = {
+      sourceX: 230, sourceY: 558, sourcePosition: Position.Left,
+      targetX: 830, targetY: 399, targetPosition: Position.Right,
+      data: {
+        sourceCardinality: '0..n' as const, targetCardinality: '1' as const, imported: false,
+        routeType: 'smoothstep' as const, routePoints: [{ x: 502, y: 149 }]
+      }
+    }
+
+    expect(relationshipPathSections(base).map((section) => section[1])).toEqual([206, 854])
+    const moved = relationshipPathSections({
+      ...base,
+      data: { ...base.data, routeSectionOffsets: [{ x: -30, y: 0 }, { x: 40, y: 0 }] }
+    })
+    expect(moved.map((section) => section[1])).toEqual([176, 894])
+    expect(relationshipPath({
+      ...base,
+      data: { ...base.data, routeSectionOffsets: [{ x: -30, y: 0 }, { x: 40, y: 0 }] }
+    }).slice(1, 3)).toEqual([502, 149])
   })
 
   it('snaps the table edge nearest to the paper edge onto a grid that closes at both borders', () => {
@@ -627,8 +724,8 @@ describe('Eridion document model', () => {
         label: 'CUSTOMER_ID',
         optional: true,
         targetCardinality: '0..1',
-        sourceAnchor: { side: 'left', position: -0.333 },
-        targetAnchor: { side: 'right', position: 0 }
+        sourceAnchor: { side: 'left', position: 0.135, columnId: 'public.ORDERS.CUSTOMER_ID' },
+        targetAnchor: { side: 'right', position: 0.64, columnId: 'public.CUSTOMERS.ID' }
       }
     })
     expect(buildPrintHtml(document)).toContain('stroke-dasharray="5 4"')

@@ -186,7 +186,7 @@ label.checkbox input { width: auto; min-height: 0; }
 .edge-label.selected { border-color:#2563eb; color:#1d4ed8; box-shadow:0 0 0 1px #2563eb40; }
 .edge-label .xor { margin-right: 4px; color: #b45309; font-weight: 900; }
 .edge-route-drag { cursor:move; touch-action:none; }
-.edge-route-drag:hover { stroke:#2563eb !important; stroke-opacity:.12 !important; }
+.edge-route-hover { stroke:#2563eb; stroke-width:32; stroke-opacity:.12; }
 .edge-route-point { fill:white; stroke:#2563eb; stroke-width:2; cursor:move; pointer-events:all; }
 .edge-anchor-hit { fill: transparent; stroke: transparent; cursor: grab; pointer-events: all; }
 .edge-anchor-hit:active { cursor: grabbing; }

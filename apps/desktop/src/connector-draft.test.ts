@@ -21,4 +21,21 @@ describe('connector drag state', () => {
     })
     expect(takeConnectorTarget()).toBeUndefined()
   })
+
+  it('allows a connector to return to another anchor of the same table', () => {
+    startConnector({ nodeId: 'a', anchor: { side: 'left', position: -0.5 } }, { x: 10, y: 20 })
+    setConnectorHover({ nodeId: 'a', anchor: { side: 'right', position: 0.5 } })
+
+    expect(takeConnectorTarget()).toEqual({
+      source: { nodeId: 'a', anchor: { side: 'left', position: -0.5 } },
+      target: { nodeId: 'a', anchor: { side: 'right', position: 0.5 } }
+    })
+  })
+
+  it('does not create a self-connector when the pointer never leaves its starting anchor', () => {
+    startConnector({ nodeId: 'a', anchor: { side: 'left', position: -0.5, columnId: 'parent' } }, { x: 10, y: 20 })
+    setConnectorHover({ nodeId: 'a', anchor: { side: 'left', position: -0.5, columnId: 'parent' } })
+
+    expect(takeConnectorTarget()).toBeUndefined()
+  })
 })

@@ -4,7 +4,7 @@ import { Handle, Position, useVueFlow, type NodeProps } from '@vue-flow/core'
 import { KeyRound, Link2, Table2, View } from 'lucide-vue-next'
 import { useDocumentState } from '../document-state'
 import { cancelConnector, connectorHover, connectorPointer, connectorSource, moveConnectorPointer, setConnectorHover, startConnector, takeConnectorTarget } from '../connector-draft'
-import { nearestRelationshipAnchor, shortTypeName, sortTableColumns, TABLE_BASE_RENDER_SCALE, tableSize, type AnchorSide, type EridionDocument, type RelationshipAnchor, type TableNodeData } from '../model'
+import { columnAwareRelationshipAnchor, resolvedRelationshipAnchor, shortTypeName, sortTableColumns, TABLE_BASE_RENDER_SCALE, tableSize, type AnchorSide, type EridionDocument, type RelationshipAnchor, type RelationshipColumnBounds, type TableNodeData } from '../model'
 import { TABLE_COLUMN_GAP, TABLE_COLUMN_SIDE_PADDING, TABLE_TYPE_MIN_CHARACTERS } from '../render-metrics'
 
 const props = defineProps<NodeProps<TableNodeData>>()
@@ -37,19 +37,32 @@ function anchorPosition(anchor: RelationshipAnchor | undefined, fallback: Anchor
 }
 
 function anchorStyle(anchor: RelationshipAnchor | undefined): CSSProperties {
-  const side = anchor?.side ?? 'right'
-  const percentage = `${(Math.max(-1, Math.min(1, anchor?.position ?? 0)) + 1) * 50}%`
+  const resolved = resolvedRelationshipAnchor(anchor, props.data)
+  const side = resolved?.side ?? 'right'
+  const percentage = `${(Math.max(-1, Math.min(1, resolved?.position ?? 0)) + 1) * 50}%`
   return side === 'top' || side === 'bottom' ? { left: percentage } : { top: percentage }
 }
 
-function anchorAtPoint(rect: DOMRect, clientX: number, clientY: number): RelationshipAnchor | undefined {
-  const nearest = nearestRelationshipAnchor(rect, clientX, clientY, true)
-  return nearest.distance <= 18 ? nearest.anchor : undefined
+function columnBounds(table: HTMLElement): RelationshipColumnBounds[] {
+  return Array.from(table.querySelectorAll<HTMLElement>('.table-column[data-column-id]')).map((column) => {
+    const rect = column.getBoundingClientRect()
+    return { id: column.dataset.columnId!, top: rect.top, bottom: rect.bottom }
+  })
+}
+
+function anchorAtPoint(table: HTMLElement, clientX: number, clientY: number, precise = false): RelationshipAnchor | undefined {
+  const rect = table.getBoundingClientRect()
+  const nearest = columnAwareRelationshipAnchor(rect, clientX, clientY, columnBounds(table), undefined, precise)
+  const distance = Math.min(Math.abs(clientX - rect.left), Math.abs(clientX - rect.right), Math.abs(clientY - rect.top), Math.abs(clientY - rect.bottom))
+  return distance <= 18 ? nearest.anchor : undefined
 }
 
 function updateSnapPoint(event: MouseEvent) {
   if (connectingFromThisTable.value) return
-  const anchor = anchorAtPoint((event.currentTarget as HTMLElement).getBoundingClientRect(), event.clientX, event.clientY)
+  const anchor = anchorAtPoint(
+    event.currentTarget as HTMLElement, event.clientX, event.clientY,
+    event.ctrlKey || event.metaKey
+  )
   snapAnchor.value = anchor
   if (!anchor) return
   setConnectorHover({ nodeId: props.id, anchor: { ...anchor } })
@@ -83,11 +96,14 @@ function trackConnectorPointer(event: PointerEvent | MouseEvent) {
     .find(Boolean)
   const node = table?.closest<HTMLElement>('.vue-flow__node-table')
   const nodeId = node?.dataset.id
-  if (!table || !nodeId || nodeId === connectorSource.value?.nodeId) {
+  if (!table || !nodeId) {
     setConnectorHover(undefined)
     return
   }
-  const anchor = nearestRelationshipAnchor(table.getBoundingClientRect(), event.clientX, event.clientY, true).anchor
+  const anchor = columnAwareRelationshipAnchor(
+    table.getBoundingClientRect(), event.clientX, event.clientY, columnBounds(table), undefined,
+    event.ctrlKey || event.metaKey
+  ).anchor
   setConnectorHover({ nodeId, anchor })
 }
 
@@ -163,7 +179,7 @@ watch(
       <strong>{{ data.name }}</strong>
     </header>
     <div class="table-columns">
-      <div v-for="column in displayedColumns" :key="column.id" class="table-column">
+      <div v-for="column in displayedColumns" :key="column.id" class="table-column" :data-column-id="column.id">
         <span class="column-flags">
           <KeyRound v-if="showIcons && column.primaryKey" :size="13" class="pk" />
           <Link2 v-if="showIcons && column.foreignKey" :size="13" class="fk" />

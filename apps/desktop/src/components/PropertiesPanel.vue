@@ -43,6 +43,13 @@ function changed() {
   emit('changed')
 }
 
+function anchorChanged(value: DiagramEdge, end: 'source' | 'target') {
+  const edited = anchor(value, end)
+  edited.columnId = undefined
+  edited.columnOffset = undefined
+  changed()
+}
+
 function setNodeLocked(locked: boolean) {
   const selected = node.value
   if (!selected) return
@@ -89,6 +96,7 @@ function resetRoutePosition() {
   data.routeOffsetX = 0
   data.routeOffsetY = 0
   data.routePoints = []
+  data.routeSectionOffsets = []
   changed()
 }
 
@@ -196,7 +204,7 @@ function removeColumn(id: string) {
         <label>Route Y<input v-model.number="relationship(edge)!.routeOffsetY" type="number" step="1" placeholder="0" @input="changed" /></label>
       </div>
       <button class="secondary" @click="resetRoutePosition"><RotateCcw :size="15" /> Automatische Route</button>
-      <p class="hint">Ctrl/Cmd-Klick auf die Linie fügt einen Hilfspunkt ein. Hilfspunkte ziehen; Doppelklick entfernt sie.</p>
+      <p class="hint">Ctrl/Cmd-Klick auf die Linie fügt einen Hilfspunkt ein. Gerade Abschnitte am Hilfspunkt verschieben ihn mit; äußere Abschnitte und das Quadrat lassen sich separat ziehen. Doppelklick entfernt den Hilfspunkt.</p>
       <div class="form-grid compact-grid">
         <label>Quelle<select v-model="relationship(edge)!.sourceCardinality" @change="changed"><option>0..1</option><option>1</option><option>0..n</option><option>1..n</option></select></label>
         <label>Ziel<select v-model="relationship(edge)!.targetCardinality" @change="changed"><option>0..1</option><option>1</option><option>0..n</option><option>1..n</option></select></label>
@@ -204,15 +212,15 @@ function removeColumn(id: string) {
       <label class="checkbox"><input v-model="relationship(edge)!.optional" type="checkbox" @change="changed" /> Optionaler FK (gestrichelte Linie)</label>
       <fieldset class="anchor-editor">
         <legend>Quellanschluss</legend>
-        <label>Seite<select v-model="anchor(edge, 'source').side" @change="changed"><option value="top">Oben</option><option value="right">Rechts</option><option value="bottom">Unten</option><option value="left">Links</option></select></label>
-        <label>Position <output>{{ anchor(edge, 'source').position.toFixed(2) }}</output><input v-model.number="anchor(edge, 'source').position" type="range" min="-1" max="1" step="0.01" @input="changed" /></label>
-        <label>Direkte Position<input v-model.number="anchor(edge, 'source').position" type="number" min="-1" max="1" step="0.01" @input="changed" /></label>
+        <label>Seite<select v-model="anchor(edge, 'source').side" @change="anchorChanged(edge, 'source')"><option value="top">Oben</option><option value="right">Rechts</option><option value="bottom">Unten</option><option value="left">Links</option></select></label>
+        <label>Position <output>{{ anchor(edge, 'source').position.toFixed(2) }}</output><input v-model.number="anchor(edge, 'source').position" type="range" min="-1" max="1" step="0.01" @input="anchorChanged(edge, 'source')" /></label>
+        <label>Direkte Position<input v-model.number="anchor(edge, 'source').position" type="number" min="-1" max="1" step="0.01" @input="anchorChanged(edge, 'source')" /></label>
       </fieldset>
       <fieldset class="anchor-editor">
         <legend>Zielanschluss</legend>
-        <label>Seite<select v-model="anchor(edge, 'target').side" @change="changed"><option value="top">Oben</option><option value="right">Rechts</option><option value="bottom">Unten</option><option value="left">Links</option></select></label>
-        <label>Position <output>{{ anchor(edge, 'target').position.toFixed(2) }}</output><input v-model.number="anchor(edge, 'target').position" type="range" min="-1" max="1" step="0.01" @input="changed" /></label>
-        <label>Direkte Position<input v-model.number="anchor(edge, 'target').position" type="number" min="-1" max="1" step="0.01" @input="changed" /></label>
+        <label>Seite<select v-model="anchor(edge, 'target').side" @change="anchorChanged(edge, 'target')"><option value="top">Oben</option><option value="right">Rechts</option><option value="bottom">Unten</option><option value="left">Links</option></select></label>
+        <label>Position <output>{{ anchor(edge, 'target').position.toFixed(2) }}</output><input v-model.number="anchor(edge, 'target').position" type="range" min="-1" max="1" step="0.01" @input="anchorChanged(edge, 'target')" /></label>
+        <label>Direkte Position<input v-model.number="anchor(edge, 'target').position" type="number" min="-1" max="1" step="0.01" @input="anchorChanged(edge, 'target')" /></label>
       </fieldset>
       <label>Entweder-oder-Gruppe<input v-model="relationship(edge)!.xorGroup" placeholder="z. B. XOR-1" @input="changed" /></label>
       <label>Linienfarbe<input v-model="relationship(edge)!.color" type="color" @input="changed" /></label>

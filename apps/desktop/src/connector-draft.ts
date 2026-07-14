@@ -34,6 +34,11 @@ export function takeConnectorTarget(): { source: SnapTarget; target: SnapTarget 
   const source = connectorSource.value
   const target = connectorHover.value
   cancelConnector()
-  if (!source || !target || source.nodeId === target.nodeId) return
+  if (!source || !target) return
+  const sameAnchor = source.anchor.side === target.anchor.side
+    && source.anchor.position === target.anchor.position
+    && source.anchor.columnId === target.anchor.columnId
+    && source.anchor.columnOffset === target.anchor.columnOffset
+  if (source.nodeId === target.nodeId && sameAnchor) return
   return { source, target }
 }
